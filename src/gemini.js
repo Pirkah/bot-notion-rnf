@@ -1,10 +1,15 @@
 /**
  * Module d'interaction avec l'API Google Gemini (@google/genai).
  * Gère le modèle configurable, le Google Search Tool et les outils Notion via Function Calling.
+ *
+ * CONFORMITÉ RGPD :
+ * Le prompt système et les filtres imposent une stricte protection des données personnelles
+ * des partenaires, fournisseurs et étudiants.
  */
 
 import { GoogleGenAI } from '@google/genai';
 import { searchNotion, readNotionPage, createNotionPage, appendNotionPage } from './notion.js';
+import { sanitizePII } from './slackUtils.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -120,6 +125,11 @@ const notionToolsDefinitions = [
 const SYSTEM_INSTRUCTION = `Tu es RnF Bot, un membre à part entière de l'équipe étudiante du projet BUT GEA.
 Ton rôle est d'assister l'équipe avec bienveillance, rigueur et professionnalisme.
 
+🛡️ RÈGLE ABSOLUE DE PROTECTION RGPD :
+Tu es strictement tenu au respect du Règlement Général sur la Protection des Données (RGPD).
+Il t'est formellement interdit de diffuser, mémoriser ou chercher à reconstituer des coordonnées personnelles privées (numéros de téléphone personnels ou professionnels, adresses e-mail nominatives) de nos partenaires, fournisseurs ou étudiants.
+Toutes les données issues de Notion sont automatiquement anonymisées. Si un utilisateur te demande explicitement le numéro ou le mail direct d'un contact, rappelle courtoisement que ces données sont masquées et protégées par la politique RGPD du projet, et invite l'utilisateur à consulter directement la fiche sécurisée sur Notion.
+
 Tes capacités clés :
 1. Notion de l'équipe : Tu as accès direct à l'espace de travail Notion de notre projet. Si un étudiant te pose une question sur l'avancement, les tâches, les réunions, les cours ou les documents de travail, utilise impérativement l'outil 'search_notion' puis 'read_notion_page' pour consulter les informations réelles avant de répondre. Tu peux aussi créer des pages ou ajouter des notes si demandé.
 2. Recherche Web en direct : Grâce à l'outil Google Search, tu as accès à Internet en direct. Utilise-le chaque fois qu'une question porte sur une information récente, un chiffre économique, une réglementation, une définition ou une source externe.
@@ -177,26 +187,22 @@ export async function generateGeminiResponse(userPrompt, conversationHistory = [
     });
 
     // Boucle agentique pour traiter les appels de fonctions (Notion)
-    // Sécurité : maximum 6 itérations pour éviter toute boucle infinie
     const MAX_TURNS = 6;
     let turns = 0;
 
     while (turns < MAX_TURNS) {
       turns++;
 
-      // Vérifier s'il y a des demandes d'appel d'outils
       const functionCalls = currentInteraction.steps?.filter(
         step => step.type === 'function_call'
       ) || [];
 
       if (functionCalls.length === 0) {
-        // Aucune fonction demandée, le modèle a terminé son raisonnement
         break;
       }
 
       console.log(`[Gemini Turn ${turns}] ${functionCalls.length} fonction(s) à exécuter...`);
 
-      // Exécution de chaque fonction demandée (en parallèle si plusieurs)
       const functionResults = [];
       for (const fc of functionCalls) {
         const result = await executeNotionFunction(fc.name, fc.arguments);
@@ -213,7 +219,6 @@ export async function generateGeminiResponse(userPrompt, conversationHistory = [
         });
       }
 
-      // Renvoi des résultats à Gemini pour continuer la conversation
       currentInteraction = await client.interactions.create({
         model: model,
         input: functionResults,
@@ -226,7 +231,6 @@ export async function generateGeminiResponse(userPrompt, conversationHistory = [
     let responseText = currentInteraction.output_text;
 
     if (!responseText) {
-      // Fallback si output_text est vide : inspection des étapes model_output
       const outputStep = currentInteraction.steps?.find(s => s.type === 'model_output');
       if (outputStep && outputStep.content) {
         const textParts = outputStep.content.filter(c => c.type === 'text');
@@ -236,11 +240,12 @@ export async function generateGeminiResponse(userPrompt, conversationHistory = [
       }
     }
 
-    return responseText || "Je n'ai pas pu formuler de réponse. Veuillez réessayer votre question.";
+    // Filtrage ultime de sécurité RGPD sur la réponse finale
+    const finalSafeText = sanitizePII(responseText || "Je n'ai pas pu formuler de réponse. Veuillez réessayer votre question.");
+    return finalSafeText;
   } catch (error) {
     console.error('[Gemini] Erreur lors de la génération :', error);
 
-    // Messages d'erreur explicites pour les étudiants
     if (error.message?.includes('API_KEY_INVALID') || error.message?.includes('GEMINI_API_KEY')) {
       return "⚠️ *Erreur de configuration Gemini* : Votre clé d'API `GEMINI_API_KEY` semble invalide ou manquante. Vérifiez votre fichier `.env` ou les paramètres de votre hébergeur.";
     }

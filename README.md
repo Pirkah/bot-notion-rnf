@@ -4,7 +4,8 @@
 > Ce bot agit comme un coéquipier virtuel supplémentaire pour votre équipe de projet : il peut chercher et synthétiser vos documents **Notion**, effectuer des recherches en direct sur le web via **Google Search**, et vous répondre directement dans vos canaux **Slack**.
 >
 > 💡 **100 % Gratuit à l'usage et à l'hébergement.**  
-> 🎓 **Conçu pour les étudiants non informaticiens : aucune ligne de code ni terminal requis !**
+> 🎓 **Conçu pour les étudiants non informaticiens : aucune ligne de code ni terminal requis !**  
+> 🛡️ **Conformité RGPD stricte : masquage automatique des adresses emails et numéros de téléphone des partenaires et fournisseurs.**
 
 ---
 
@@ -16,7 +17,7 @@
 5. [Étape 4 : Déploiement 1-Clic sur Render (Hébergement Gratuit)](#-étape-4--déploiement-1-clic-sur-render-hébergement-gratuit)
 6. [Comment utiliser le bot dans Slack](#-comment-utiliser-le-bot-dans-slack)
 7. [Guide de Reprise pour l'Année Prochaine (Passation Zéro-Code)](#-guide-de-reprise-pour-lannée-prochaine-passation-zéro-code)
-8. [Sécurité et Confidentialité](#-sécurité-et-confidentialité)
+8. [Sécurité, Confidentialité et Conformité RGPD](#-sécurité-confidentialité-et-conformité-rgpd)
 
 ---
 
@@ -25,6 +26,7 @@
 - 🧠 **Intelligence Artificielle Google Gemini** : Analyse vos demandes, comprend le contexte de votre projet et formule des réponses claires et professionnelles.
 - 📚 **Connexion directe avec Notion** : Le bot recherche dans vos cours, bases de données, comptes-rendus de réunion et fiches projet pour vous faire des synthèses instantanées. Il peut aussi créer des pages ou ajouter des notes.
 - 🔍 **Recherche Web en temps réel (Google Search)** : Il a accès à Internet en direct pour vérifier des actualités, des lois, des chiffres économiques ou des définitions sans quitter Slack.
+- 🛡️ **Protection des Données (RGPD)** : Caviardage automatique et systématique des données de contact (emails, numéros de téléphone de partenaires, fournisseurs, intervenants).
 - 💬 **Réponses structurées et soignées** : Il répond toujours dans les fils de discussion (*threads*) pour garder vos canaux Slack propres et bien organisés.
 
 ---
@@ -111,7 +113,7 @@ Render permet d'héberger votre bot **gratuitement** dans le cloud, sans laisser
 
 1. Rendez-vous sur **[https://render.com](https://render.com)** et créez un compte gratuit (vous pouvez vous connecter avec votre compte GitHub).
 2. Cliquez sur le bouton **"New +"** en haut à droite et choisissez **"Blueprint"** (ou "Web Service").
-3. Connectez votre compte GitHub et sélectionnez le dépôt de ce projet.
+3. Connectez votre compte GitHub et sélectionnez le dépôt de ce projet (`Pirkah/bot-notion-rnf`).
 4. Render détecte automatiquement le fichier `render.yaml` et affiche un formulaire avec les variables d'environnement.
 5. Remplissez simplement les champs avec vos clés notées aux étapes précédentes :
    - `GEMINI_API_KEY` : Votre clé Gemini (`AIzaSy...`)
@@ -160,11 +162,25 @@ Voici comment administrer le bot en 3 clics :
 
 ---
 
-## 🛡️ Sécurité et Confidentialité
+## 🛡️ Sécurité, Confidentialité et Conformité RGPD
 
-- **Fichier `.gitignore` actif** : Les fichiers contenant vos clés réelles (`.env`) sont strictement ignorés par Git et ne seront **JAMAIS** envoyés ou visibles publiquement sur GitHub.
-- **Socket Mode sécurisé** : Le bot communique avec Slack via une connexion WebSocket chiffrée sortante. Aucun port public ni URL webhook n'est exposé sur Internet.
-- **Accès Notion cloisonné** : Le bot ne peut accéder qu'aux pages Notion sur lesquelles vous l'avez explicitement invité via le menu *"Connexions"*. Vos autres documents personnels restent totalement inaccessibles.
+Ce projet a été conçu selon le principe de **Privacy by Design** (protection des données dès la conception) :
+
+1. **Anonymisation automatique des données de contact (RGPD)** :
+   - Le connecteur Notion inspecte chaque bloc de texte et chaque fiche.
+   - **Toute adresse e-mail** (ex: `contact@partenaire.com`) est automatiquement remplacée par `[EMAIL_MASQUÉ_RGPD]`.
+   - **Tout numéro de téléphone** (formats français 06..., +33... ou internationaux) est automatiquement remplacé par `[TÉL_MASQUÉ_RGPD]`.
+   - Les colonnes de bases de données de type email/téléphone sont masquées avant même d'être envoyées au modèle d'IA.
+   - Si un utilisateur demande le numéro ou le mail direct d'un partenaire, le bot rappelle courtoisement la politique de protection RGPD.
+
+2. **Secrets protégés (`.gitignore`)** :
+   - Les fichiers contenant vos clés réelles (`.env`) sont strictement ignorés par Git et ne seront **JAMAIS** envoyés sur GitHub.
+
+3. **Socket Mode sécurisé** :
+   - Le bot communique avec Slack via un WebSocket sortant chiffré. Aucun serveur ni port n'est exposé publiquement sur Internet.
+
+4. **Cloisonnement Notion** :
+   - Le bot ne peut accéder qu'aux pages sur lesquelles vous l'avez explicitement invité. Vos autres documents privés Notion restent inaccessibles.
 
 ---
 
