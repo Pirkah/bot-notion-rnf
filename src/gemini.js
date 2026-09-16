@@ -274,8 +274,20 @@ export async function generateGeminiResponse(userPrompt, conversationHistory = [
     if (error.message?.includes('API_KEY_INVALID') || error.message?.includes('GEMINI_API_KEY')) {
       return "⚠️ *Erreur de configuration Gemini* : Votre clé d'API `GEMINI_API_KEY` semble invalide ou manquante. Vérifiez votre fichier `.env` ou les paramètres de votre hébergeur.";
     }
-    if (error.message?.includes('RESOURCE_EXHAUSTED')) {
-      return "⚠️ *Limite de requêtes atteinte* : Le quota temporaire de l'API gratuite Gemini a été atteint. Attendez une ou deux minutes avant de réitérer votre demande.";
+    if (
+      error.message?.includes('429') ||
+      error.message?.includes('quota') ||
+      error.message?.includes('RESOURCE_EXHAUSTED') ||
+      error.message?.includes('rate-limits')
+    ) {
+      // Extraction éventuelle du temps d'attente recommandé par Google
+      const matchSeconds = error.message?.match(/retry in ([0-9.]+)s/i);
+      const waitTime = matchSeconds ? Math.ceil(parseFloat(matchSeconds[1])) : 30;
+
+      return `⏳ *Un instant s'il vous plaît* : Le quota temporaire de requêtes gratuites par minute pour le modèle actuel est atteint.
+Veuillez patienter environ *${waitTime} secondes* avant de reposer votre question.
+
+💡 *Conseil pour l'équipe* : Dans votre tableau de bord Render > *Environment*, vous pouvez changer la variable \`GEMINI_MODEL\` par \`gemini-2.5-flash\`. Ce modèle permet jusqu'à *15 requêtes par minute* gratuites (contre 5 avec la version 3.8).`;
     }
     if (error.message?.includes('NOTION_API_KEY')) {
       return "⚠️ *Erreur de configuration Notion* : La clé `NOTION_API_KEY` n'est pas configurée dans les variables d'environnement.";
