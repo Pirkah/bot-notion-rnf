@@ -70,8 +70,8 @@ const healthServer = http.createServer((req, res) => {
   }
 });
 
-healthServer.listen(PORT, () => {
-  console.log(`🌐 Serveur HTTP de santé en écoute sur le port ${PORT} (compatible Render)`);
+healthServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`🌐 Serveur HTTP de santé en écoute sur 0.0.0.0:${PORT} (compatible Render)`);
 });
 
 // ==============================================================================
