@@ -31,7 +31,7 @@ function getAiClient() {
  * Récupère le modèle configuré dans l'environnement, avec fallback sur gemini-3.8-flash.
  */
 export function getModelName() {
-  return process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
+  return process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
 }
 
 /**
