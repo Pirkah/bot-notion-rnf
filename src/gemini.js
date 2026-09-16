@@ -167,7 +167,7 @@ async function executeNotionFunction(name, args) {
  * @param {Array} [conversationHistory] - Historique éventuel de la conversation
  * @returns {Promise<string>} - La réponse textuelle finale à envoyer sur Slack
  */
-export async function generateGeminiResponse(userPrompt, conversationHistory = []) {
+export async function generateGeminiResponse(userPrompt, conversationHistory = [], onProgress = null) {
   try {
     const client = getAiClient();
     const model = getModelName();
@@ -230,6 +230,19 @@ export async function generateGeminiResponse(userPrompt, conversationHistory = [
 
       const functionResults = [];
       for (const fc of functionCalls) {
+        // Notification visuelle de l'avancée pour l'utilisateur dans Slack
+        if (onProgress && typeof onProgress === 'function') {
+          if (fc.name === 'search_notion') {
+            await onProgress(`🔍 _Recherche dans votre espace Notion : "${fc.arguments?.query || ''}"..._`);
+          } else if (fc.name === 'read_notion_page') {
+            await onProgress('📖 _Lecture et analyse du document Notion..._');
+          } else if (fc.name === 'create_notion_page') {
+            await onProgress(`✍️ _Création de la page "${fc.arguments?.title || ''}" dans Notion..._`);
+          } else if (fc.name === 'append_to_notion_page') {
+            await onProgress('📝 _Ajout des notes sur la page Notion..._');
+          }
+        }
+
         const result = await executeNotionFunction(fc.name, fc.arguments);
         functionResults.push({
           type: 'function_result',

@@ -137,25 +137,57 @@ async function handleUserMessage({ client, channel, text, threadTs, messageTs })
   // Ajout de l'émoji sablier pour indiquer la prise en charge
   await safeAddReaction(client, channel, messageTs, 'hourglass_flowing_sand');
 
+  const targetThread = threadTs || messageTs;
+  let progressMsg = null;
+
   try {
-    // Récupérer l'historique du fil si on est dans un thread
+    // 1. Envoi immédiat d'un message temporaire d'état dans le fil de discussion
+    progressMsg = await client.chat.postMessage({
+      channel: channel,
+      thread_ts: targetThread,
+      text: "⏳ _RnF Bot réfléchit..._"
+    });
+
+    // Callback pour mettre à jour ce message en direct lors des étapes Notion
+    const onProgress = async (statusText) => {
+      if (!progressMsg?.ts) return;
+      try {
+        await client.chat.update({
+          channel: channel,
+          ts: progressMsg.ts,
+          text: statusText
+        });
+      } catch (err) {
+        // Ignoré si échec ponctuel de mise à jour Slack
+      }
+    };
+
+    // 2. Récupérer l'historique du fil si on est dans un thread
     let history = [];
     if (threadTs) {
       history = await getThreadHistory(client, channel, threadTs);
     }
 
-    // Appel à Gemini avec recherche web et fonctions Notion
-    const response = await generateGeminiResponse(prompt, history);
+    // 3. Appel à Gemini avec suivi de progression
+    const response = await generateGeminiResponse(prompt, history, onProgress);
 
-    // Formatage et découpage du message si nécessaire
+    // 4. Formatage et découpage du message
     const formattedResponse = formatMarkdownForSlack(response);
     const chunks = splitSlackMessage(formattedResponse);
 
-    for (const chunk of chunks) {
+    // Mettre à jour le message d'attente avec la réponse finale (premier bloc)
+    await client.chat.update({
+      channel: channel,
+      ts: progressMsg.ts,
+      text: chunks[0]
+    });
+
+    // Si la réponse dépasse 3800 caractères, poster les blocs suivants
+    for (let i = 1; i < chunks.length; i++) {
       await client.chat.postMessage({
         channel: channel,
-        thread_ts: threadTs || messageTs,
-        text: chunk
+        thread_ts: targetThread,
+        text: chunks[i]
       });
     }
 
@@ -167,11 +199,20 @@ async function handleUserMessage({ client, channel, text, threadTs, messageTs })
     await safeRemoveReaction(client, channel, messageTs, 'hourglass_flowing_sand');
     await safeAddReaction(client, channel, messageTs, 'warning');
 
-    await client.chat.postMessage({
-      channel: channel,
-      thread_ts: threadTs || messageTs,
-      text: `⚠️ Désolé, une erreur inattendue est survenue : ${err.message}`
-    });
+    const errorMessage = `⚠️ Désolé, une erreur inattendue est survenue : ${err.message}`;
+    if (progressMsg?.ts) {
+      await client.chat.update({
+        channel: channel,
+        ts: progressMsg.ts,
+        text: errorMessage
+      });
+    } else {
+      await client.chat.postMessage({
+        channel: channel,
+        thread_ts: targetThread,
+        text: errorMessage
+      });
+    }
   }
 }
 
