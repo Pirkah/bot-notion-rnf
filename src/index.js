@@ -38,6 +38,14 @@ if (missingVars.length > 0) {
   console.warn('Veuillez renseigner ces variables dans votre fichier .env ou dans le tableau de bord Render.\n');
 }
 
+// Vérification du format des tokens Slack
+if (process.env.SLACK_BOT_TOKEN && !process.env.SLACK_BOT_TOKEN.startsWith('xoxb-')) {
+  console.warn('⚠️ ATTENTION : SLACK_BOT_TOKEN doit commencer par "xoxb-". Vérifiez que vous n\'avez pas inversé avec SLACK_APP_TOKEN.');
+}
+if (process.env.SLACK_APP_TOKEN && !process.env.SLACK_APP_TOKEN.startsWith('xapp-')) {
+  console.warn('⚠️ ATTENTION : SLACK_APP_TOKEN doit commencer par "xapp-". Vérifiez que vous n\'avez pas inversé avec SLACK_BOT_TOKEN.');
+}
+
 // ==============================================================================
 // 2. MINI-SERVEUR HTTP DE SANTÉ (Healthcheck indispensable pour Render gratuit)
 // ==============================================================================
@@ -76,6 +84,11 @@ const slackApp = new App({
   socketMode: true
 });
 
+// Capture globale des erreurs de connexion Slack
+slackApp.error(async (error) => {
+  console.error('❌ [Slack Bolt Error] Une erreur Slack est survenue :', error.message || error);
+});
+
 /**
  * Récupère l'historique récent du fil de discussion (thread) pour garder le contexte.
  */
@@ -104,6 +117,7 @@ async function getThreadHistory(client, channel, threadTs) {
  * Traite un message utilisateur, appelle Gemini et répond dans Slack.
  */
 async function handleUserMessage({ client, channel, text, threadTs, messageTs }) {
+  console.log(`[Slack] Traitement du message reçu : "${text}"`);
   const prompt = cleanSlackPrompt(text);
 
   if (!prompt) {
