@@ -35,92 +35,98 @@ export function getModelName() {
 }
 
 /**
- * Définition des outils (Tools) disponibles pour Gemini :
- * 1. Google Search (recherche web en direct)
- * 2. Fonctions personnalisées Notion (recherche, lecture, création, ajout)
+ * Définition des outils (Tools) disponibles pour Gemini.
+ * Note importante : La recherche Google Search nécessite une carte bancaire liée sur Google Cloud
+ * (même si 5000 requêtes sont gratuites). Sur le plan 100% gratuit sans carte, Google Search
+ * provoque une erreur 429. On l'active donc uniquement si ENABLE_GOOGLE_SEARCH=true.
  */
-const notionToolsDefinitions = [
-  {
-    type: 'google_search'
-  },
-  {
-    type: 'function',
-    name: 'search_notion',
-    description: 'Recherche des pages ou bases de données dans l\'espace Notion du projet par mots-clés.',
-    parameters: {
-      type: 'object',
-      properties: {
-        query: {
-          type: 'string',
-          description: 'Mots-clés ou termes à rechercher dans Notion'
+function getTools(enableSearch = false) {
+  const tools = [
+    {
+      type: 'function',
+      name: 'search_notion',
+      description: 'Recherche des pages ou bases de données dans l\'espace Notion du projet par mots-clés.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'Mots-clés ou termes à rechercher dans Notion'
+          },
+          filter_type: {
+            type: 'string',
+            enum: ['page', 'database'],
+            description: 'Optionnel: filtrer uniquement par page ou par base de données'
+          }
         },
-        filter_type: {
-          type: 'string',
-          enum: ['page', 'database'],
-          description: 'Optionnel: filtrer uniquement par page ou par base de données'
-        }
-      },
-      required: ['query']
-    }
-  },
-  {
-    type: 'function',
-    name: 'read_notion_page',
-    description: 'Lit le contenu textuel complet et structuré d\'une page Notion à partir de son identifiant (page_id).',
-    parameters: {
-      type: 'object',
-      properties: {
-        page_id: {
-          type: 'string',
-          description: 'L\'identifiant UUID de la page Notion (32 caractères, avec ou sans tirets)'
-        }
-      },
-      required: ['page_id']
-    }
-  },
-  {
-    type: 'function',
-    name: 'create_notion_page',
-    description: 'Crée une nouvelle page de compte-rendu, de synthèse ou de notes dans Notion.',
-    parameters: {
-      type: 'object',
-      properties: {
-        title: {
-          type: 'string',
-          description: 'Titre de la page Notion'
+        required: ['query']
+      }
+    },
+    {
+      type: 'function',
+      name: 'read_notion_page',
+      description: 'Lit le contenu textuel complet et structuré d\'une page Notion à partir de son identifiant (page_id).',
+      parameters: {
+        type: 'object',
+        properties: {
+          page_id: {
+            type: 'string',
+            description: 'L\'identifiant UUID de la page Notion (32 caractères, avec ou sans tirets)'
+          }
         },
-        content: {
-          type: 'string',
-          description: 'Contenu complet de la page structuré en paragraphes'
+        required: ['page_id']
+      }
+    },
+    {
+      type: 'function',
+      name: 'create_notion_page',
+      description: 'Crée une nouvelle page de compte-rendu, de synthèse ou de notes dans Notion.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: {
+            type: 'string',
+            description: 'Titre de la page Notion'
+          },
+          content: {
+            type: 'string',
+            description: 'Contenu complet de la page structuré en paragraphes'
+          },
+          parent_page_id: {
+            type: 'string',
+            description: 'ID de la page parente sous laquelle créer la page (optionnel, prend la racine du projet par défaut)'
+          }
         },
-        parent_page_id: {
-          type: 'string',
-          description: 'ID de la page parente sous laquelle créer la page (optionnel, prend la racine du projet par défaut)'
-        }
-      },
-      required: ['title', 'content']
-    }
-  },
-  {
-    type: 'function',
-    name: 'append_to_notion_page',
-    description: 'Ajoute des notes ou du contenu à la suite d\'une page Notion existante.',
-    parameters: {
-      type: 'object',
-      properties: {
-        page_id: {
-          type: 'string',
-          description: 'L\'identifiant de la page Notion à modifier'
+        required: ['title', 'content']
+      }
+    },
+    {
+      type: 'function',
+      name: 'append_to_notion_page',
+      description: 'Ajoute des notes ou du contenu à la suite d\'une page Notion existante.',
+      parameters: {
+        type: 'object',
+        properties: {
+          page_id: {
+            type: 'string',
+            description: 'L\'identifiant de la page Notion à modifier'
+          },
+          content: {
+            type: 'string',
+            description: 'Texte ou paragraphe à ajouter à la fin de la page'
+          }
         },
-        content: {
-          type: 'string',
-          description: 'Texte ou paragraphe à ajouter à la fin de la page'
-        }
-      },
-      required: ['page_id', 'content']
+        required: ['page_id', 'content']
+      }
     }
+  ];
+
+  if (enableSearch) {
+    tools.unshift({ type: 'google_search' });
   }
-];
+
+  return tools;
+}
 
 const SYSTEM_INSTRUCTION = `Tu es RnF Bot, un membre à part entière de l'équipe étudiante du projet BUT GEA.
 Ton rôle est d'assister l'équipe avec bienveillance, rigueur et professionnalisme.
@@ -132,8 +138,7 @@ Toutes les données issues de Notion sont automatiquement anonymisées. Si un ut
 
 Tes capacités clés :
 1. Notion de l'équipe : Tu as accès direct à l'espace de travail Notion de notre projet. Si un étudiant te pose une question sur l'avancement, les tâches, les réunions, les cours ou les documents de travail, utilise impérativement l'outil 'search_notion' puis 'read_notion_page' pour consulter les informations réelles avant de répondre. Tu peux aussi créer des pages ou ajouter des notes si demandé.
-2. Recherche Web en direct : Grâce à l'outil Google Search, tu as accès à Internet en direct. Utilise-le chaque fois qu'une question porte sur une information récente, un chiffre économique, une réglementation, une définition ou une source externe.
-3. Style de communication : Sois clair, concis et structuré. Utilise des listes à puces, mets les termes importants en gras (*mot*). Si tu t'appuies sur une page Notion ou une source web, mentionne toujours le lien vers la source.`;
+2. Style de communication : Sois clair, concis et structuré. Utilise des listes à puces, mets les termes importants en gras (*mot*). Si tu t'appuies sur une page Notion, mentionne toujours le lien vers la page.`;
 
 /**
  * Exécute l'action Notion demandée par le modèle Gemini.
@@ -178,13 +183,33 @@ export async function generateGeminiResponse(userPrompt, conversationHistory = [
       inputContent = `Contexte de la discussion précédente :\n${historyContext}\n\nNouvelle demande de l'utilisateur :\n${userPrompt}`;
     }
 
-    // Appel initial à Gemini avec Google Search et les outils Notion
-    let currentInteraction = await client.interactions.create({
-      model: model,
-      input: inputContent,
-      tools: notionToolsDefinitions,
-      system_instruction: SYSTEM_INSTRUCTION
-    });
+    // Outils actifs : Google Search uniquement si activé via ENABLE_GOOGLE_SEARCH=true
+    let useSearch = process.env.ENABLE_GOOGLE_SEARCH === 'true';
+    let tools = getTools(useSearch);
+
+    let currentInteraction;
+    try {
+      currentInteraction = await client.interactions.create({
+        model: model,
+        input: inputContent,
+        tools: tools,
+        system_instruction: SYSTEM_INSTRUCTION
+      });
+    } catch (apiError) {
+      // Si l'erreur est un 429 (quota) et que Google Search était actif, on réessaie immédiatement sans Search
+      if (useSearch && (apiError.message?.includes('429') || apiError.message?.includes('quota'))) {
+        console.warn('[Gemini] Quota Google Search dépassé (plan gratuit sans CB). Bascule automatique en mode Notion standard.');
+        tools = getTools(false);
+        currentInteraction = await client.interactions.create({
+          model: model,
+          input: inputContent,
+          tools: tools,
+          system_instruction: SYSTEM_INSTRUCTION
+        });
+      } else {
+        throw apiError;
+      }
+    }
 
     // Boucle agentique pour traiter les appels de fonctions (Notion)
     const MAX_TURNS = 6;
@@ -222,7 +247,7 @@ export async function generateGeminiResponse(userPrompt, conversationHistory = [
       currentInteraction = await client.interactions.create({
         model: model,
         input: functionResults,
-        tools: notionToolsDefinitions,
+        tools: tools,
         previous_interaction_id: currentInteraction.id
       });
     }
