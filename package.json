@@ -1,0 +1,31 @@
+{
+  "name": "slack-gemini-notion-bot",
+  "version": "1.0.0",
+  "description": "Bot Slack intelligent connecté à Google Gemini et Notion avec recherche web Google Search",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "keywords": [
+    "slack",
+    "bot",
+    "gemini",
+    "notion",
+    "socket-mode",
+    "ai",
+    "but-gea"
+  ],
+  "author": "Équipe Projet BUT GEA",
+  "license": "MIT",
+  "dependencies": {
+    "@google/genai": "^2.3.0",
+    "@notionhq/client": "^2.2.15",
+    "@slack/bolt": "^3.21.4",
+    "dotenv": "^16.4.7"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

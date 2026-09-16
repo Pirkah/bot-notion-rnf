@@ -1,0 +1,26 @@
+# ==============================================================================
+# SECRETS ET VARIABLES D'ENVIRONNEMENT (CRITIQUE : NE JAMAIS PUSHER SUR GITHUB)
+# ==============================================================================
+.env
+.env.*
+!.env.example
+
+# Dépendances Node.js
+node_modules/
+package-lock.json
+
+# Fichiers de logs et temporaires
+*.log
+logs/
+temp/
+tmp/
+
+# Fichiers système d'exploitation
+.DS_Store
+Thumbs.db
+
+# Fichiers d'éditeurs de code
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace

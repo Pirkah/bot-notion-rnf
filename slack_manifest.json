@@ -1,0 +1,39 @@
+{
+  "display_information": {
+    "name": "RnF Assistant",
+    "description": "Assistant IA connecté à Google Gemini et Notion pour notre projet d'équipe",
+    "background_color": "#1c2438"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "RnF Bot",
+      "always_online": true
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "app_mentions:read",
+        "chat:write",
+        "channels:history",
+        "groups:history",
+        "im:history",
+        "reactions:write"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "bot_events": [
+        "app_mention",
+        "message.im"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": false
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": true,
+    "token_rotation_enabled": false
+  }
+}

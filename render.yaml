@@ -1,0 +1,36 @@
+# ==============================================================================
+# BLUEPRINT RENDER : DÉPLOIEMENT 1-CLIC POUR LE BOT SLACK-GEMINI-NOTION
+# ==============================================================================
+# Ce fichier permet de déployer l'application sur le plan gratuit de Render.
+# Sur render.com > "New +" > "Blueprint" > Sélectionnez votre repo GitHub.
+# Render lira ce fichier et affichera un formulaire simple pour coller vos clés.
+# ==============================================================================
+
+services:
+  - type: web
+    name: bot-slack-gemini-notion
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.8-flash
+      - key: SLACK_BOT_TOKEN
+        sync: false
+      - key: SLACK_APP_TOKEN
+        sync: false
+      - key: SLACK_SIGNING_SECRET
+        sync: false
+      - key: NOTION_API_KEY
+        sync: false
+      - key: NOTION_ROOT_PAGE_ID
+        sync: false
+      - key: PORT
+        value: 10000
