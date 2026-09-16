@@ -38,11 +38,16 @@ if (missingVars.length > 0) {
   console.warn('Veuillez renseigner ces variables dans votre fichier .env ou dans le tableau de bord Render.\n');
 }
 
+// Nettoyage automatique des espaces/tabulations involontaires
+const slackBotToken = process.env.SLACK_BOT_TOKEN?.trim();
+const slackAppToken = process.env.SLACK_APP_TOKEN?.trim();
+const slackSigningSecret = process.env.SLACK_SIGNING_SECRET?.trim();
+
 // Vérification du format des tokens Slack
-if (process.env.SLACK_BOT_TOKEN && !process.env.SLACK_BOT_TOKEN.startsWith('xoxb-')) {
+if (slackBotToken && !slackBotToken.startsWith('xoxb-')) {
   console.warn('⚠️ ATTENTION : SLACK_BOT_TOKEN doit commencer par "xoxb-". Vérifiez que vous n\'avez pas inversé avec SLACK_APP_TOKEN.');
 }
-if (process.env.SLACK_APP_TOKEN && !process.env.SLACK_APP_TOKEN.startsWith('xapp-')) {
+if (slackAppToken && !slackAppToken.startsWith('xapp-')) {
   console.warn('⚠️ ATTENTION : SLACK_APP_TOKEN doit commencer par "xapp-". Vérifiez que vous n\'avez pas inversé avec SLACK_BOT_TOKEN.');
 }
 
@@ -78,9 +83,9 @@ healthServer.listen(PORT, '0.0.0.0', () => {
 // 3. INITIALISATION DE L'APPLICATION SLACK BOLT (SOCKET MODE)
 // ==============================================================================
 const slackApp = new App({
-  token: process.env.SLACK_BOT_TOKEN,
-  appToken: process.env.SLACK_APP_TOKEN,
-  signingSecret: process.env.SLACK_SIGNING_SECRET,
+  token: slackBotToken,
+  appToken: slackAppToken,
+  signingSecret: slackSigningSecret,
   socketMode: true
 });
 

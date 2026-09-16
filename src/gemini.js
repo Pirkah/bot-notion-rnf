@@ -17,7 +17,7 @@ dotenv.config();
 let aiClient = null;
 
 function getAiClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("La variable d'environnement GEMINI_API_KEY n'est pas définie.");
   }
@@ -31,7 +31,7 @@ function getAiClient() {
  * Récupère le modèle configuré dans l'environnement, avec fallback sur gemini-3.8-flash.
  */
 export function getModelName() {
-  return process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+  return process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
 }
 
 /**

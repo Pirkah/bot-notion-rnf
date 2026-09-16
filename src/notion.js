@@ -17,11 +17,12 @@ dotenv.config();
 let notionClient = null;
 
 function getNotionClient() {
-  if (!process.env.NOTION_API_KEY) {
+  const apiKey = process.env.NOTION_API_KEY?.trim();
+  if (!apiKey) {
     throw new Error("La variable d'environnement NOTION_API_KEY n'est pas définie.");
   }
   if (!notionClient) {
-    notionClient = new Client({ auth: process.env.NOTION_API_KEY });
+    notionClient = new Client({ auth: apiKey });
   }
   return notionClient;
 }
