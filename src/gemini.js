@@ -30,8 +30,49 @@ function getAiClient() {
 /**
  * Récupère le modèle configuré dans l'environnement, avec fallback sur gemini-3.8-flash.
  */
+/**
+ * Récupère le modèle configuré dans l'environnement.
+ * Recommandé pour le plan 100% gratuit : gemini-3.5-flash-lite (le plus économe en quota et le plus rapide).
+ */
 export function getModelName() {
-  return process.env.GEMINI_MODEL?.trim() || 'gemini-3.6-flash';
+  return process.env.GEMINI_MODEL?.trim() || 'gemini-3.5-flash-lite';
+}
+
+/**
+ * Enveloppe robuste pour les appels Gemini avec réessai automatique en cas de quota 429.
+ * Si Google demande d'attendre X secondes, le bot attend automatiquement au lieu de planter !
+ */
+async function safeInteractionCreate(client, params, onProgress) {
+  try {
+    return await client.interactions.create(params);
+  } catch (err) {
+    const isRateLimit =
+      err.message?.includes('429') ||
+      err.message?.includes('quota') ||
+      err.message?.includes('RESOURCE_EXHAUSTED') ||
+      err.message?.includes('rate-limits');
+
+    if (isRateLimit) {
+      const matchSeconds = err.message?.match(/retry in ([0-9.]+)s/i);
+      const waitSec = matchSeconds ? Math.min(Math.ceil(parseFloat(matchSeconds[1])), 45) : 15;
+
+      console.warn(`[Gemini] Quota temporaire atteint (429). Pause automatique de ${waitSec}s...`);
+      if (onProgress && typeof onProgress === 'function') {
+        await onProgress(`⏳ _Forte affluence sur le quota gratuit : pause de ${waitSec}s puis finalisation automatique..._`);
+      }
+
+      // Attente automatique
+      await new Promise(resolve => setTimeout(resolve, (waitSec + 1) * 1000));
+
+      if (onProgress && typeof onProgress === 'function') {
+        await onProgress('✍️ _Reprise et finalisation de votre réponse en cours..._');
+      }
+
+      // Deuxième tentative
+      return await client.interactions.create(params);
+    }
+    throw err;
+  }
 }
 
 /**
@@ -189,23 +230,31 @@ export async function generateGeminiResponse(userPrompt, conversationHistory = [
 
     let currentInteraction;
     try {
-      currentInteraction = await client.interactions.create({
-        model: model,
-        input: inputContent,
-        tools: tools,
-        system_instruction: SYSTEM_INSTRUCTION
-      });
+      currentInteraction = await safeInteractionCreate(
+        client,
+        {
+          model: model,
+          input: inputContent,
+          tools: tools,
+          system_instruction: SYSTEM_INSTRUCTION
+        },
+        onProgress
+      );
     } catch (apiError) {
       // Si l'erreur est un 429 (quota) et que Google Search était actif, on réessaie immédiatement sans Search
       if (useSearch && (apiError.message?.includes('429') || apiError.message?.includes('quota'))) {
         console.warn('[Gemini] Quota Google Search dépassé (plan gratuit sans CB). Bascule automatique en mode Notion standard.');
         tools = getTools(false);
-        currentInteraction = await client.interactions.create({
-          model: model,
-          input: inputContent,
-          tools: tools,
-          system_instruction: SYSTEM_INSTRUCTION
-        });
+        currentInteraction = await safeInteractionCreate(
+          client,
+          {
+            model: model,
+            input: inputContent,
+            tools: tools,
+            system_instruction: SYSTEM_INSTRUCTION
+          },
+          onProgress
+        );
       } else {
         throw apiError;
       }
@@ -257,12 +306,16 @@ export async function generateGeminiResponse(userPrompt, conversationHistory = [
         });
       }
 
-      currentInteraction = await client.interactions.create({
-        model: model,
-        input: functionResults,
-        tools: tools,
-        previous_interaction_id: currentInteraction.id
-      });
+      currentInteraction = await safeInteractionCreate(
+        client,
+        {
+          model: model,
+          input: functionResults,
+          tools: tools,
+          previous_interaction_id: currentInteraction.id
+        },
+        onProgress
+      );
     }
 
     // Récupération de la réponse textuelle finale
