@@ -161,6 +161,15 @@ function convertBlocksToMarkdown(blocks) {
       case 'divider':
         lines.push('---');
         break;
+      case 'child_page':
+        lines.push(`📄 **Sous-page** : "${sanitizePII(blockData.title || 'Sans titre')}" (ID: ${block.id})`);
+        break;
+      case 'child_database':
+        lines.push(`📊 **Base de données** : "${sanitizePII(blockData.title || 'Sans titre')}" (ID: ${block.id})`);
+        break;
+      case 'link_to_page':
+        lines.push(`🔗 **Lien vers élément** (ID: ${blockData.page_id || blockData.database_id || block.id})`);
+        break;
       default:
         if (richText.trim()) lines.push(richText);
         break;
@@ -183,8 +192,8 @@ export async function searchNotion({ query, filter_type }) {
     console.log(`[Notion] Recherche: "${query}" (filtre: ${filter_type || 'tous'})`);
 
     const searchParams = {
-      query: query,
-      page_size: 10
+      query: query || '',
+      page_size: 25
     };
 
     if (filter_type && (filter_type === 'page' || filter_type === 'database')) {
