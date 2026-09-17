@@ -28,23 +28,55 @@ function getAiClient() {
 }
 
 /**
- * Récupère le modèle configuré dans l'environnement, avec fallback sur gemini-3.8-flash.
- */
-/**
  * Récupère le modèle configuré dans l'environnement.
- * Recommandé pour le plan 100% gratuit : gemini-3.5-flash-lite (le plus économe en quota et le plus rapide).
+ * Par défaut : gemini-3.6-flash (modèle récent, stable et gratuit).
+ * Si un ancien modèle obsolète (ex: 2.5 ou 1.5) a été configuré, bascule automatiquement.
  */
 export function getModelName() {
-  return process.env.GEMINI_MODEL?.trim() || 'gemini-3.5-flash-lite';
+  const configured = process.env.GEMINI_MODEL?.trim();
+  if (!configured) return 'gemini-3.6-flash';
+  if (configured.includes('2.5') || configured.includes('1.5') || configured.includes('2.0')) {
+    console.warn(`[Gemini] Le modèle configuré "${configured}" est obsolète sur l'API Interactions. Bascule automatique sur "gemini-3.6-flash".`);
+    return 'gemini-3.6-flash';
+  }
+  return configured;
 }
 
 /**
- * Enveloppe robuste pour les appels Gemini avec réessai automatique en cas de quota 429.
- * Si Google demande d'attendre X secondes, le bot attend automatiquement au lieu de planter !
+ * Attend que l'interaction Gemini soit complètement terminée (statut !== 'in_progress').
+ */
+async function waitForInteractionCompletion(client, interaction, onProgress = null) {
+  let current = interaction;
+  let attempts = 0;
+  const maxAttempts = 30; // Jusqu'à 30 secondes d'attente
+
+  while (current && current.status === 'in_progress' && attempts < maxAttempts) {
+    attempts++;
+    console.log(`[Gemini] Interaction ${current.id} en cours... attente 1s (tentative ${attempts}/${maxAttempts})`);
+    if (attempts === 2 && onProgress && typeof onProgress === 'function') {
+      await onProgress('✍️ _Rédaction de la réponse en cours..._');
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      current = await client.interactions.get(current.id);
+    } catch (pollErr) {
+      console.warn(`[Gemini] Erreur lors de la vérification de l'interaction ${current.id} :`, pollErr.message);
+      break;
+    }
+  }
+
+  console.log(`[Gemini] Statut de l'interaction ${current?.id} : ${current?.status}`);
+  return current;
+}
+
+/**
+ * Enveloppe robuste pour les appels Gemini avec réessai automatique en cas de quota 429
+ * et attente de la complétion effective de l'interaction.
  */
 async function safeInteractionCreate(client, params, onProgress) {
   try {
-    return await client.interactions.create(params);
+    const interaction = await client.interactions.create(params);
+    return await waitForInteractionCompletion(client, interaction, onProgress);
   } catch (err) {
     const isRateLimit =
       err.message?.includes('429') ||
@@ -54,22 +86,23 @@ async function safeInteractionCreate(client, params, onProgress) {
 
     if (isRateLimit) {
       const matchSeconds = err.message?.match(/retry in ([0-9.]+)s/i);
-      const waitSec = matchSeconds ? Math.min(Math.ceil(parseFloat(matchSeconds[1])), 45) : 15;
+      const waitSec = matchSeconds ? Math.min(Math.ceil(parseFloat(matchSeconds[1])), 45) : 20;
 
       console.warn(`[Gemini] Quota temporaire atteint (429). Pause automatique de ${waitSec}s...`);
       if (onProgress && typeof onProgress === 'function') {
-        await onProgress(`⏳ _Forte affluence sur le quota gratuit : pause de ${waitSec}s puis finalisation automatique..._`);
+        await onProgress(`⏳ _Forte affluence sur le quota gratuit : pause de ${waitSec}s puis reprise automatique..._`);
       }
 
       // Attente automatique
       await new Promise(resolve => setTimeout(resolve, (waitSec + 1) * 1000));
 
       if (onProgress && typeof onProgress === 'function') {
-        await onProgress('✍️ _Reprise et finalisation de votre réponse en cours..._');
+        await onProgress('✍️ _Reprise et finalisation en cours..._');
       }
 
       // Deuxième tentative
-      return await client.interactions.create(params);
+      const retryInteraction = await client.interactions.create(params);
+      return await waitForInteractionCompletion(client, retryInteraction, onProgress);
     }
     throw err;
   }
@@ -318,16 +351,23 @@ export async function generateGeminiResponse(userPrompt, conversationHistory = [
       );
     }
 
-    // Récupération de la réponse textuelle finale
-    let responseText = currentInteraction.output_text;
+    console.log(`[Gemini] Statut final de l'interaction : ${currentInteraction.status}`);
+    if (currentInteraction.steps) {
+      console.log(`[Gemini] Étapes reçues : ${currentInteraction.steps.map(s => s.type).join(' -> ')}`);
+    }
+
+    // Récupération robuste de la réponse textuelle
+    let responseText = extractTextFromInteraction(currentInteraction);
 
     if (!responseText) {
-      const outputStep = currentInteraction.steps?.find(s => s.type === 'model_output');
-      if (outputStep && outputStep.content) {
-        const textParts = outputStep.content.filter(c => c.type === 'text');
-        if (textParts.length > 0) {
-          responseText = textParts.map(p => p.text).join('\n');
-        }
+      console.warn('[Gemini] Aucun texte extrait. Détails de l\'interaction :', JSON.stringify(currentInteraction, null, 2));
+
+      if (currentInteraction.errors && currentInteraction.errors.length > 0) {
+        const errMsgs = currentInteraction.errors.map(e => e.message || e.code).join(', ');
+        return `⚠️ Le modèle n'a pas pu formuler de réponse : ${errMsgs}`;
+      }
+      if (currentInteraction.status === 'failed') {
+        return "⚠️ Le traitement a été interrompu par Gemini. Veuillez reposer votre question dans un instant.";
       }
     }
 
@@ -346,14 +386,13 @@ export async function generateGeminiResponse(userPrompt, conversationHistory = [
       error.message?.includes('RESOURCE_EXHAUSTED') ||
       error.message?.includes('rate-limits')
     ) {
-      // Extraction éventuelle du temps d'attente recommandé par Google
       const matchSeconds = error.message?.match(/retry in ([0-9.]+)s/i);
       const waitTime = matchSeconds ? Math.ceil(parseFloat(matchSeconds[1])) : 30;
 
       return `⏳ *Un instant s'il vous plaît* : Le quota temporaire de requêtes gratuites par minute pour le modèle actuel est atteint.
 Veuillez patienter environ *${waitTime} secondes* avant de reposer votre question.
 
-💡 *Conseil pour l'équipe* : Dans votre tableau de bord Render > *Environment*, vous pouvez changer la variable \`GEMINI_MODEL\` par \`gemini-2.5-flash\`. Ce modèle permet jusqu'à *15 requêtes par minute* gratuites (contre 5 avec la version 3.8).`;
+💡 *Conseil pour l'équipe* : Si vous avez renseigné une variable \`GEMINI_MODEL\` dans Render, nous vous conseillons \`gemini-3.6-flash\`.`;
     }
     if (error.message?.includes('NOTION_API_KEY')) {
       return "⚠️ *Erreur de configuration Notion* : La clé `NOTION_API_KEY` n'est pas configurée dans les variables d'environnement.";
@@ -361,4 +400,99 @@ Veuillez patienter environ *${waitTime} secondes* avant de reposer votre questio
 
     return `⚠️ Une erreur est survenue lors du traitement de votre demande : ${error.message}`;
   }
+}
+
+/**
+ * Extrait intelligemment le texte généré à partir de tout type de structure renvoyée par Gemini.
+ * Compatible avec les différentes versions du schéma (output_text, outputs, steps, candidates).
+ */
+export function extractTextFromInteraction(interaction) {
+  if (!interaction) return '';
+
+  // 1. Propriété directe du SDK (@google/genai convenience property)
+  if (typeof interaction.output_text === 'string' && interaction.output_text.trim()) {
+    return interaction.output_text.trim();
+  }
+
+  // 2. Propriété directe 'text'
+  if (typeof interaction.text === 'string' && interaction.text.trim()) {
+    return interaction.text.trim();
+  }
+
+  // 3. Tableau outputs (compatibilité schéma REST standard)
+  if (Array.isArray(interaction.outputs) && interaction.outputs.length > 0) {
+    const texts = interaction.outputs
+      .map(o => {
+        if (typeof o === 'string') return o;
+        if (o && typeof o.text === 'string') return o.text;
+        return '';
+      })
+      .filter(Boolean);
+    if (texts.length > 0) {
+      return texts.join('\n').trim();
+    }
+  }
+
+  // 4. Tableau d'étapes (steps)
+  if (Array.isArray(interaction.steps) && interaction.steps.length > 0) {
+    // A. Chercher en priorité les étapes de type 'model_output'
+    const modelSteps = interaction.steps.filter(s => s.type === 'model_output' || s.type === 'text');
+    if (modelSteps.length > 0) {
+      const stepTexts = [];
+      for (const step of modelSteps) {
+        if (typeof step.text === 'string' && step.text.trim()) {
+          stepTexts.push(step.text.trim());
+        } else if (Array.isArray(step.content)) {
+          for (const item of step.content) {
+            if (typeof item === 'string' && item.trim()) {
+              stepTexts.push(item.trim());
+            } else if (item && typeof item.text === 'string' && item.text.trim()) {
+              stepTexts.push(item.text.trim());
+            }
+          }
+        } else if (typeof step.content === 'string' && step.content.trim()) {
+          stepTexts.push(step.content.trim());
+        }
+      }
+      if (stepTexts.length > 0) {
+        return stepTexts.join('\n').trim();
+      }
+    }
+
+    // B. Parcourir de la fin vers le début pour toute étape avec du texte valide
+    for (let i = interaction.steps.length - 1; i >= 0; i--) {
+      const step = interaction.steps[i];
+      if (
+        step.type === 'thought' ||
+        step.type === 'function_call' ||
+        step.type === 'function_result' ||
+        step.type === 'user_input'
+      ) {
+        continue;
+      }
+      if (typeof step.text === 'string' && step.text.trim()) {
+        return step.text.trim();
+      }
+      if (Array.isArray(step.content)) {
+        const texts = step.content
+          .map(c => (typeof c === 'string' ? c : c?.text || ''))
+          .filter(Boolean);
+        if (texts.length > 0) {
+          return texts.join('\n').trim();
+        }
+      }
+    }
+  }
+
+  // 5. Structure 'candidates' (format generateContent classique)
+  if (Array.isArray(interaction.candidates) && interaction.candidates[0]?.content?.parts) {
+    const parts = interaction.candidates[0].content.parts
+      .map(p => (typeof p === 'string' ? p : p?.text || ''))
+      .filter(Boolean);
+    if (parts.length > 0) {
+      return parts.join('\n').trim();
+    }
+  }
+
+  return '';
 }
