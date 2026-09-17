@@ -240,21 +240,86 @@ export async function searchNotion({ query, filter_type }) {
 }
 
 /**
- * Lit le contenu textuel et les blocs d'une page Notion à partir de son ID.
+ * Lit et formate le contenu d'une base de données Notion (lignes, propriétés, colonnes).
+ */
+async function readNotionDatabaseHelper(notion, databaseId) {
+  console.log(`[Notion] Lecture de la base de données ID: ${databaseId}`);
+  const db = await notion.databases.retrieve({ database_id: databaseId });
+  const dbTitle = db.title && db.title.length > 0
+    ? db.title.map(t => t.plain_text).join('')
+    : 'Base de données';
+
+  const queryResponse = await notion.databases.query({
+    database_id: databaseId,
+    page_size: 50
+  });
+
+  const items = queryResponse.results || [];
+  console.log(`[Notion] Base "${dbTitle}" : ${items.length} élément(s) trouvé(s)`);
+
+  if (items.length === 0) {
+    return {
+      id: db.id,
+      type: 'database',
+      title: sanitizePII(dbTitle),
+      url: db.url,
+      total_items: 0,
+      content: `La base de données "${sanitizePII(dbTitle)}" est actuellement vide.`
+    };
+  }
+
+  const formattedRows = items.map((row, idx) => {
+    const rowTitle = extractPageTitle(row);
+    const props = extractSanitizedProperties(row.properties);
+    const propLines = Object.entries(props)
+      .filter(([k]) => k.toLowerCase() !== 'nom' && k.toLowerCase() !== 'title' && k.toLowerCase() !== 'name')
+      .map(([k, v]) => `    - *${k}* : ${v}`)
+      .join('\n');
+
+    return `${idx + 1}. **${rowTitle}**\n${propLines || '    (Aucune propriété supplémentaire)'}`;
+  });
+
+  const fullContent = `# Base de données : ${sanitizePII(dbTitle)}\n` +
+    `Nombre total d'éléments : ${items.length}\n\n` +
+    formattedRows.join('\n\n');
+
+  return {
+    id: db.id,
+    type: 'database',
+    title: sanitizePII(dbTitle),
+    url: db.url,
+    total_items: items.length,
+    content: fullContent
+  };
+}
+
+/**
+ * Lit le contenu d'un élément Notion (page ou base de données comme les Tâches) à partir de son ID.
  * Toutes les coordonnées personnelles (emails, téléphones) sont masquées avant transmission à l'IA.
  *
  * @param {Object} params
- * @param {string} params.page_id - L'identifiant unique UUID de la page
- * @returns {Promise<Object>} Métadonnées et contenu Markdown assaini de la page
+ * @param {string} params.page_id - L'identifiant unique UUID de la page ou de la base
+ * @returns {Promise<Object>} Métadonnées et contenu Markdown assaini
  */
 export async function readNotionPage({ page_id }) {
   try {
     const notion = getNotionClient();
-    const cleanPageId = page_id.replace(/-/g, '');
-    console.log(`[Notion] Lecture de la page ID: ${cleanPageId}`);
+    const cleanId = page_id.replace(/-/g, '');
+    console.log(`[Notion] Lecture de l'élément ID: ${cleanId}`);
 
-    // Récupérer les métadonnées de la page
-    const page = await notion.pages.retrieve({ page_id: cleanPageId });
+    // Tentative 1 : Récupération en tant que page Notion classique
+    let page = null;
+    try {
+      page = await notion.pages.retrieve({ page_id: cleanId });
+    } catch (pageErr) {
+      // Si Notion signale que ce n'est pas une page, on teste immédiatement si c'est une base de données
+      try {
+        return await readNotionDatabaseHelper(notion, cleanId);
+      } catch (dbErr) {
+        throw pageErr;
+      }
+    }
+
     const title = extractPageTitle(page);
     const url = page.url;
 
@@ -270,7 +335,7 @@ export async function readNotionPage({ page_id }) {
 
     // Récupérer les blocs enfants (jusqu'à 100 blocs)
     const blocksResponse = await notion.blocks.children.list({
-      block_id: cleanPageId,
+      block_id: cleanId,
       page_size: 100
     });
 
@@ -279,14 +344,15 @@ export async function readNotionPage({ page_id }) {
 
     return {
       id: page.id,
+      type: 'page',
       title: title,
       url: url,
       content: fullContent
     };
   } catch (error) {
-    console.error(`[Notion] Erreur lors de la lecture de la page ${page_id} :`, error);
+    console.error(`[Notion] Erreur lors de la lecture de l'élément ${page_id} :`, error);
     return {
-      error: `Impossible de lire la page Notion (${page_id}) : ${error.message}. Vérifiez que le bot a été invité sur cette page Notion (Menu "..." > Connexions).`
+      error: `Impossible de lire l'élément Notion (${page_id}) : ${error.message}. Vérifiez que le bot a été invité sur cette page ou base Notion (Menu "..." > Connexions).`
     };
   }
 }

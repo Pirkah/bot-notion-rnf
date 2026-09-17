@@ -139,13 +139,13 @@ function getTools(enableSearch = false) {
     {
       type: 'function',
       name: 'read_notion_page',
-      description: 'Lit le contenu textuel complet et structuré d\'une page Notion à partir de son identifiant (page_id).',
+      description: 'Lit le contenu d\'une page OU les éléments d\'une base de données Notion (tableau des tâches, idées, planning, contacts) à partir de son identifiant (page_id).',
       parameters: {
         type: 'object',
         properties: {
           page_id: {
             type: 'string',
-            description: 'L\'identifiant UUID de la page Notion (32 caractères, avec ou sans tirets)'
+            description: 'L\'identifiant UUID de la page ou de la base de données Notion (32 caractères, avec ou sans tirets)'
           }
         },
         required: ['page_id']
